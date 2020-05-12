@@ -1,0 +1,102 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: An AWS Serverless Specification template describing your function.
+Parameters:
+  EndpointName:
+    Type: String
+    Default : 'sms-spam-classifier-mxnet-2020-04-29-03-28-04-243'
+    Description: Please Enter your Sagemaker Endpoint
+  S3BucketName:
+    Type: String
+    Default : 'spamemailstorebucket'
+    Description: Please Enter your S3 Bucket
+  RuleSetName:
+    Type: String
+    Default : 'sesspamruleset'
+    Description: Please Enter your SES Rule Set Name
+  ReceiptRuleName:
+    Type: String
+    Default : 'ruletobucket'
+    Description: Please Enter your SES Receipt Name Rule Name
+  CodeBucketName:
+    Type: String
+    Default : 'sagemakerlambdas'
+    Description: Please Enter the s3 bucket where the lambdas zip file has been stored
+
+Resources:
+  Bucket1:
+    Type: 'AWS::S3::Bucket'
+    DependsOn: ProcessingLambdaPermission
+    Properties:
+      AccessControl: PublicReadWrite
+      BucketName: !Ref S3BucketName
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt InvokeSagemakerFunction.Arn
+  
+  ProcessingLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !GetAtt InvokeSagemakerFunction.Arn
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub 'arn:aws:s3:::${S3BucketName}'
+      SourceAccount: !Ref AWS::AccountId
+
+  RoleLF1:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: '*'
+                Resource: '*'
+          PolicyName: root    
+
+  InvokeSagemakerFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: lambda_function.lambda_handler
+      Runtime: python2.7
+      Code:
+        S3Bucket: !Ref CodeBucketName 
+        S3Key: lambdas.zip
+      Description: ''
+      MemorySize: 128
+      Timeout: 10
+      Role: !GetAtt
+        - RoleLF1
+        - Arn
+      Environment:
+        Variables:
+          ENDPOINT_NAME: !Ref EndpointName
+      Layers:
+        - >-
+          arn:aws:lambda:us-east-1:668099181075:layer:AWSLambda-Python27-SciPy1x:14
+
+  ReceiptRuleSet:
+    Type: AWS::SES::ReceiptRuleSet
+    Properties:
+      RuleSetName: !Ref RuleSetName
+
+  SESRuleToSendMail:
+    Type: AWS::SES::ReceiptRule
+    Properties:
+      RuleSetName: !Ref RuleSetName
+      Rule:
+        Name: !Ref ReceiptRuleName
+        Actions:
+          - S3Action:
+              BucketName: !Ref S3BucketName
+        Enabled: true
+        ScanEnabled: true
+    DependsOn: Bucket1
