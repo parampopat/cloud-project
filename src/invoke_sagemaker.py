@@ -23,10 +23,8 @@ def get_label(text):
     encoded_test_messages = vectorize_sequences(one_hot_test_messages, vocabulary_length)
     lists = encoded_test_messages.tolist()
     json_str = json.dumps(lists)
-    response = runtime.invoke_endpoint(EndpointName=ENDPOINT_NAME,
-                                      ContentType='text/csv',
-                                      Body=json_str)
     try:
+        response = runtime.invoke_endpoint(EndpointName=ENDPOINT_NAME,ContentType='text/csv',Body=json_str)
         body =  json.loads(response['Body'].read().decode())
         label = "Spam" if body['predicted_label'][0][0] == 1 else "Ham"
         raw_prob = body['predicted_probability'][0][0]
